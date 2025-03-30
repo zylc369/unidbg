@@ -44,7 +44,11 @@ public abstract class AbstractLoader<T extends NewFileIO> implements Memory, Loa
     protected final Emulator<T> emulator;
     protected final UnixSyscallHandler<T> syscallHandler;
 
+    /**
+     * 栈指针当前位置
+     */
     protected long sp;
+
     protected long mmapBaseAddress;
     protected final Map<Long, MemoryMap> memoryMap = new TreeMap<>();
 
@@ -309,26 +313,43 @@ public abstract class AbstractLoader<T extends NewFileIO> implements Memory, Loa
 
     @Override
     public final UnidbgPointer allocateStack(int size) {
+        // 新栈顶
         long newAddr = sp - size;
+        /*
+        Memory.STACK_BASE 是栈的基地址（通常是栈的最高地址）。
+        Memory.STACK_SIZE_OF_MAIN_PAGE 是主栈页的大小。
+        emulator.getPageAlign() 是页对齐值。
+        threadStackBase 是栈的最低有效地址，表示栈的最大可用范围。
+         */
         long threadStackBase = Memory.STACK_BASE - (long) Memory.STACK_SIZE_OF_MAIN_PAGE * emulator.getPageAlign();
+
         if(newAddr <= threadStackBase){
+            // 如果新栈指针地址 newAddr 小于或等于 threadStackBase，说明栈空间已经耗尽。
+            // 此时抛出异常，提示栈指针越界错误，并输出当前栈指针地址和栈基地址的十六进制值。
             throw new IllegalStateException("Error! main thread stack point too large. sp=0x" + Long.toHexString(sp) + ", threadStackBase=0x" + Long.toHexString(threadStackBase));
         }
+
+        // 更新栈指针
         setStackPoint(newAddr);
         UnidbgPointer pointer = UnidbgPointer.pointer(emulator, sp);
         assert pointer != null;
+        // 将指针对象的大小设置为分配的栈空间大小 size。
         return pointer.setSize(size);
     }
 
     @Override
     public final UnidbgPointer writeStackString(String str) {
+        // 将字符串写入栈的方法 writeStackString，并返回一个指向该栈空间的指针。
         byte[] data = str.getBytes(StandardCharsets.UTF_8);
+        // 长度比原始数据多 1，新数组的最后一个字节会被自动初始化为 0（即 \0），表示 C 风格字符串的结束符。
         return writeStackBytes(Arrays.copyOf(data, data.length + 1));
     }
 
     @Override
     public final UnidbgPointer writeStackBytes(byte[] data) {
+        // 对占用空间以0x10为基准对齐
         int size = ARM.alignSize(data.length);
+        // 分配栈空间
         UnidbgPointer pointer = allocateStack(size);
         assert pointer != null;
         pointer.write(0, data, 0, data.length);
@@ -340,7 +361,11 @@ public abstract class AbstractLoader<T extends NewFileIO> implements Memory, Loa
         return UnidbgPointer.pointer(emulator, address);
     }
 
+    /**
+     * 栈基址
+     */
     private long stackBase;
+
     protected int stackSize;
 
     @Override
@@ -356,9 +381,13 @@ public abstract class AbstractLoader<T extends NewFileIO> implements Memory, Loa
     @Override
     public final void setStackPoint(long sp) {
         if (this.sp == 0) {
+            // 如果当前栈指针 this.sp 为 0，则将传入的栈指针地址 sp 设置为栈基址 stackBase。
             this.stackBase = sp;
         }
+
         this.sp = sp;
+
+        // 根据模拟器位数更新寄存器
         if (emulator.is32Bit()) {
             backend.reg_write(ArmConst.UC_ARM_REG_SP, sp);
         } else {

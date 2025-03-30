@@ -143,6 +143,7 @@ public abstract class Module {
     }
 
     public static Number emulateFunction(Emulator<?> emulator, long address, Object... args) {
+        // 对象类型都转换成数值类型，在JNI层基础类型是数值、非基础类型是对象指针，指针也是数值
         List<Number> list = new ArrayList<>(args.length);
         for (Object arg : args) {
             if (arg instanceof String) {

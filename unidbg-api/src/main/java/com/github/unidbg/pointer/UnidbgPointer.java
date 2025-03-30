@@ -26,7 +26,15 @@ public class UnidbgPointer extends Pointer implements PointerArg {
 
     private final Emulator<?> emulator;
     private final Backend backend;
+
+    /**
+     * 入口点地址/数据的基址
+     */
     public final long peer;
+
+    /**
+     * 指针长度
+     */
     private final int pointerSize;
 
     public static long nativeValue(Pointer ptr) {
@@ -57,13 +65,20 @@ public class UnidbgPointer extends Pointer implements PointerArg {
         this.listener = null;
     }
 
+    /**
+     * 构造函数
+     *
+     * @param emulator    虚拟机对象
+     * @param peer        入口点地址/数据的基址
+     * @param pointerSize 指针长度
+     */
     private UnidbgPointer(Emulator<?> emulator, long peer, int pointerSize) {
         super(0);
 
         this.emulator = emulator;
         this.backend = emulator.getBackend();
         this.peer = peer;
-        this.pointerSize = pointerSize;
+        this.pointerSize = pointerSize; // 每次指针位移长度
 
         if (emulator instanceof MemoryWriteListener) {
             listener = (MemoryWriteListener) emulator;

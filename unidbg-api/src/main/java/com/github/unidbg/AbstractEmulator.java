@@ -99,6 +99,7 @@ public abstract class AbstractEmulator<T extends NewFileIO> implements Emulator<
         this.processName = processName == null ? "unidbg" : processName;
         this.registerContext = createRegisterContext(backend);
 
+        // 获取进程ID
         String name = ManagementFactory.getRuntimeMXBean().getName();
         String pid = name.split("@")[0];
         this.pid = Integer.parseInt(pid) & 0x7fff;
@@ -336,31 +337,44 @@ public abstract class AbstractEmulator<T extends NewFileIO> implements Emulator<
 
     protected final Number runMainForResult(MainTask task) {
         Memory memory = getMemory();
+        // 获取当前栈的位置
         long spBackup = memory.getStackPoint();
         try {
             return getThreadDispatcher().runMainForResult(task);
         } finally {
+            // 执行完成后恢复栈
             memory.setStackPoint(spBackup);
         }
     }
 
     /**
+     * @param begin 模拟器开始执行的起始地址。
+     * @param until 模拟器停止执行的目标地址（通常是函数的返回地址或某个特定的终止点）。
+     *
      * @return <code>null</code>表示执行未完成，需要线程调度
+     * @throws PopContextException 抛出 PopContextException 表示需要切换上下文（通常在多线程模拟中使用）。
      */
     public final Number emulate(long begin, long until) throws PopContextException {
         if (running) {
+            // 如果模拟器已经在运行，则停止当前仿真并抛出异常。这是为了防止并发或重复调用导致的问题。
             backend.emu_stop();
             throw new IllegalStateException("running");
         }
+
         if (is32Bit()) {
+            // 对于 32 位架构，将 begin 地址截断为 32 位（即只保留低 32 位）。这是因为 32 位架构无法处理超过 32 位的地址。
             begin &= 0xffffffffL;
         }
 
+        // 创建一个指向 begin 地址的指针对象 pointer，便于调试时记录起始地址。
         final Pointer pointer = UnidbgPointer.pointer(this, begin);
+        // 记录仿真开始的时间戳 start，用于计算仿真耗时。
         long start = 0;
+        // 定义一个退出钩子线程 exitHook，用于在程序意外退出时停止模拟器并附加调试器。
         Thread exitHook = null;
         try {
             if (log.isDebugEnabled()) {
+                // 记录仿真起始地址和栈指针（SP）。
                 log.debug("emulate " + pointer + " started sp=" + getStackPointer());
             }
             start = System.currentTimeMillis();
@@ -375,30 +389,47 @@ public abstract class AbstractEmulator<T extends NewFileIO> implements Emulator<
                 });
                 Runtime.getRuntime().addShutdownHook(exitHook);
             }
+
+            /*
+            启动 Unicorn 引擎。
+            参数解释：
+                begin: 起始地址。
+                until: 停止地址。
+                第三个参数（timeout）: 超时时间（单位为微秒），这里设置为 0 表示无超时限制。
+                第四个参数（count）: 最大指令数，这里设置为 0 表示不限制指令数。
+             */
             backend.emu_start(begin, until, 0, 0);
+
             if (is64Bit()) {
+                // 直接读取寄存器 X0 的值作为返回值。
                 return backend.reg_read(Arm64Const.UC_ARM64_REG_X0);
             } else {
+                // 读取寄存器 R0 和 R1 的值，并将它们组合成一个 64 位整数：R0 提供低 32 位；R1 提供高 32 位。
                 Number r0 = backend.reg_read(ArmConst.UC_ARM_REG_R0);
                 Number r1 = backend.reg_read(ArmConst.UC_ARM_REG_R1);
                 return (r0.intValue() & 0xffffffffL) | ((r1.intValue() & 0xffffffffL) << 32);
             }
         } catch (ThreadContextSwitchException e) {
+            // 线程上下文切换: 同步返回值并打印堆栈信息。
             e.syncReturnValue(this);
             if (log.isTraceEnabled()) {
                 e.printStackTrace(System.out);
             }
             return null;
         } catch (PopContextException e) {
+            // 上下文弹出异常: 直接抛出
             throw e;
         } catch (RuntimeException e) {
+            // 其他: 调用 handleEmuException 处理异常，并返回结果。
             return handleEmuException(e, pointer, start);
         } finally {
             if (exitHook != null) {
+                // 移除退出钩子线程。
                 Runtime.getRuntime().removeShutdownHook(exitHook);
             }
             running = false;
 
+            // 记录仿真结束的时间戳和栈指针（SP），并输出仿真耗时。
             log.debug("emulate {} finished sp={}, offset={}ms", pointer, getStackPointer(), System.currentTimeMillis() - start);
         }
     }

@@ -897,22 +897,70 @@ public class ARM {
         return ARM64_REGS;
     }
 
+    /**
+     * 对齐基准值
+     */
     private static final int ALIGN_SIZE_BASE = 0x10;
 
+    /**
+     * 对齐
+     * 输入 size = 5，返回 16。输入 size = 20，返回 32。
+     *
+     * @param size 原字节长度
+     * @return 返回对齐后的结果
+     */
     public static int alignSize(int size) {
         return (int) alignSize(size, ALIGN_SIZE_BASE);
     }
 
+    /**
+     * 对一个内存区域的起始地址和大小进行对齐操作。
+     *
+     * @param addr      起始地址
+     * @param size      占用空间
+     * @param alignment 对齐基准值
+     * @return 返回对齐后的结果
+     */
     public static Alignment align(long addr, long size, long alignment) {
+        /*
+        假设 alignment = 16，addr = 5，size = 20：
+        初始状态：
+            起始地址：5
+            结束地址：5 + 20 = 25
+        调整结束地址：right = (25 + 16 - 1) & (-16) = 40
+        调整起始地址：addr = 5 & (-16) = 0
+        算对齐后的大小：
+        size = 40 - 0 = 40
+        size = (40 + 16 - 1) & (-16) = 48
+        返回结果：
+            对齐后的起始地址：0
+            对齐后的大小：48
+         */
+
+        // mask 是通过对齐值取负得到的，目的是生成一个位掩码。
+        // 假设 alignment = 16，则 mask = -16，在二进制中表示为 11111111...11110000。
         long mask = -alignment;
+
+        // right 表示原始内存区域的结束地址。
         long right = addr + size;
+        // (right + alignment - 1) & mask 将结束地址向上对齐到 alignment 的倍数。
         right = (right + alignment - 1) & mask;
+        // 将起始地址向下对齐到 alignment 的倍数。
         addr &= mask;
+        // 计算对齐后的内存区域大小。
         size = right - addr;
+        // 确保大小也是对齐值的倍数。
         size = (size + alignment - 1) & mask;
         return new Alignment(addr, size);
     }
 
+    /**
+     * 对齐
+     *
+     * @param size  原字节长度
+     * @param align 对齐基准值
+     * @return 返回对齐后的结果
+     */
     public static long alignSize(long size, long align) {
         return ((size - 1) / align + 1) * align;
     }
@@ -1185,15 +1233,32 @@ public class ARM {
 
     private static final Logger log = LoggerFactory.getLogger(ARM.class);
 
+    /**
+     * 用于初始化函数调用参数的工具方法，主要用于在模拟器（Emulator）中设置传递给函数的参数。
+     * 它根据目标架构（如 ARM 或 ARM64）和参数类型（如整数、浮点数、双精度浮点数等），将参数写入寄存器或栈中。
+     *
+     * @param emulator  模拟器对象
+     * @param padding   true: 对齐; false: 不对齐
+     * @param arguments 入参列表
+     */
     public static void initArgs(Emulator<?> emulator, boolean padding, Number... arguments) {
+        // 模拟器后端，用于访问寄存器和执行底层操作。
         Backend backend = emulator.getBackend();
+        // 模拟器的内存管理器，用于分配栈空间和写入数据。
         Memory memory = emulator.getMemory();
 
+        // 获取当前架构下可用的寄存器索引数组，用于存储函数参数。
+        // 在 ARM/ARM64 架构中，前几个参数通常存储在寄存器中（具体数量取决于 ABI 规范）。
         int[] regArgs = ARM.getRegArgs(emulator);
+
+        // argList用于存储处理后的参数列表（可能包含拆分后的值）。
         List<Number> argList = new ArrayList<>(arguments.length * 2);
         int regVector = Arm64Const.UC_ARM64_REG_Q0;
         for (Number arg : arguments) {
             if (emulator.is64Bit()) {
+                // 对于浮点数（Float）和双精度浮点数（Double），它们会被写入向量寄存器（如 ARM64 的 Q0-Q7）。
+                // 使用 ByteBuffer 将浮点数转换为字节数组，并写入相应的寄存器。
+
                 if (arg instanceof Float) {
                     ByteBuffer buffer = ByteBuffer.allocate(16);
                     buffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -1211,6 +1276,11 @@ public class ARM {
                 argList.add(arg);
                 continue;
             }
+
+            // 执行到此处意味着32位架构
+
+            // 对于 64 位整数（Long）和双精度浮点数（DOUBLE），将其拆分为两个 32 位部分，并按小端序存储。
+            // 如果启用了 padding，并且当前参数数量为奇数，则添加一个填充值（0）以确保对齐。
             if (arg instanceof Long) {
                 if (log.isDebugEnabled()) {
                     log.debug("initLongArgs size={}, length={}", argList.size(), regArgs.length, new Exception("initArgs long=" + arg));
@@ -1240,6 +1310,8 @@ public class ARM {
                 argList.add(buffer.getInt());
                 argList.add(buffer.getInt());
             } else if (arg instanceof Float) {
+                // 单精度浮点数按小端序存储
+
                 if (log.isDebugEnabled()) {
                     log.debug("initFloatArgs size={}, length={}", argList.size(), regArgs.length, new Exception("initArgs float=" + arg));
                 }
@@ -1249,28 +1321,44 @@ public class ARM {
                 buffer.flip();
                 argList.add(buffer.getInt());
             } else {
+                // 其他类型
                 argList.add(arg);
             }
         }
+
+        // 字符串和数组参数写入栈（方法内会调用memory.writeStackXXX），null变成0，其他类型不变
         final Arguments args = new Arguments(memory, argList.toArray(new Number[0]));
 
         List<Number> list = new ArrayList<>();
         if (args.args != null) {
             Collections.addAll(list, args.args);
         }
+
+        // 将 args 中的参数依次写入寄存器。
         int i = 0;
         while (!list.isEmpty() && i < regArgs.length) {
             backend.reg_write(regArgs[i], list.remove(0));
             i++;
         }
+
+        /*
+        将参数列表的顺序反转。
+        在许多 CPU 架构（如 ARM、x86）中，当函数调用需要将参数传递到栈中时，参数的布局顺序通常是从右向左压入栈中。
+        也就是说，最后一个参数会最先被压入栈中，而第一个参数最后被压入栈中
+         */
         Collections.reverse(list);
         if (list.size() % 2 != 0) { // alignment sp
+            // 确保栈指针对齐，以满足目标架构的 ABI（Application Binary Interface）规范要求
             memory.allocateStack(emulator.getPointerSize());
         }
+
+        // 如果参数数量超过寄存器容量，则剩余参数将被写入栈中。
         while (!list.isEmpty()) {
             Number number = list.remove(0);
+            // 确保栈对齐（64 位架构下为 8 字节对齐，32 位架构下为 4 字节对齐）。
             UnidbgPointer pointer = memory.allocateStack(emulator.getPointerSize());
             assert pointer != null;
+
             if (emulator.is64Bit()) {
                 if ((pointer.peer % 8) != 0) {
                     log.warn("init 64BitArgs pointer={}", pointer);

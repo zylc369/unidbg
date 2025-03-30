@@ -243,6 +243,7 @@ public class DvmClass extends DvmObject<Class<?>> {
         mangleForJni(builder, method.substring(0, index));
         String symbolName = builder.toString();
         if (fnPtr == null) {
+            // 查找C层函数符号
             for (Module module : emulator.getMemory().getLoadedModules()) {
                 Symbol symbol = module.findSymbolByName(symbolName, false);
                 if (symbol != null) {

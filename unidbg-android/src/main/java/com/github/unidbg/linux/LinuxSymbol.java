@@ -29,11 +29,13 @@ public class LinuxSymbol extends Symbol {
 
     @Override
     public long getAddress() {
+        // 基址+符号相对地址，返回符号的绝对地址
         return module.base + getValue();
     }
 
     @Override
     public long getValue() {
+        // 符号的相对或绝对地址
         return elfSymbol.value;
     }
 

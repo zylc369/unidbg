@@ -97,12 +97,30 @@ public class DvmObject<T> extends Hashable {
         }
     }
 
+    /**
+     * 调用 JNI 方法
+     *
+     * @param emulator   模拟器对象
+     * @param vm         虚拟机对象
+     * @param objectType
+     * @param thisObj
+     * @param method
+     * @param args
+     * @return
+     */
     protected static Number callJniMethod(Emulator<?> emulator, VM vm, DvmClass objectType, DvmObject<?> thisObj, String method, Object...args) {
+        // 根据符号名(method)找到被调函数入口点
         UnidbgPointer fnPtr = objectType.findNativeFunction(emulator, method);
+
+        // 向虚拟机添加被调函数所属的对象
         vm.addLocalObject(thisObj);
+
+        // 填充入参
         List<Object> list = new ArrayList<>(10);
-        list.add(vm.getJNIEnv());
-        list.add(thisObj.hashCode());
+        list.add(vm.getJNIEnv());       // JNI函数，第一个参数是JNIEnv*
+        list.add(thisObj.hashCode());   // JNI函数，第二个参数是this对象，在虚拟机内能通过哈希找到 DvmObject<?> thisObj 对象
+
+        // 遍历数组填充到参数列表
         if (args != null) {
             for (Object arg : args) {
                 if (arg instanceof Boolean) {
@@ -132,6 +150,8 @@ public class DvmObject<T> extends Hashable {
                 list.add(arg);
             }
         }
+
+        // 根据符号地址和入参调用函数
         return Module.emulateFunction(emulator, fnPtr.peer, list.toArray());
     }
 
