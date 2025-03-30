@@ -114,23 +114,33 @@ public abstract class BaseVM implements VM, DvmClassFactory {
 
     @Override
     public final DvmClass resolveClass(String className, DvmClass... interfaceClasses) {
+        // 将类名中的点号（.）替换为斜杠（/），以符合 JVM 内部的类名表示方式。例如，java.lang.String 会被转换为 java/lang/String。
         className = className.replace('.', '/');
+        // 计算字符串Hash
         int hash = Objects.hash(className);
+        // 检查这个类是否存在，如果存在，则直接返回缓存的对象，避免重复创建。
         DvmClass dvmClass = classMap.get(hash);
+
         DvmClass superClass = null;
         if (interfaceClasses != null && interfaceClasses.length > 0) {
+            // 第一个元素被视为父类（superClass），剩余的元素被视为接口类列表。
             superClass = interfaceClasses[0];
             interfaceClasses = Arrays.copyOfRange(interfaceClasses, 1, interfaceClasses.length);
         }
+
         if (dvmClass == null) {
             if (dvmClassFactory != null) {
+                // 如果 dvmClassFactory 不为空，调用其 createClass 方法创建类对象。
                 dvmClass = dvmClassFactory.createClass(this, className, superClass, interfaceClasses);
             }
             if (dvmClass == null) {
+                // 如果工厂方法未能创建类对象，则调用当前类的 createClass 方法。
                 dvmClass = this.createClass(this, className, superClass, interfaceClasses);
             }
             classMap.put(hash, dvmClass);
         }
+
+        // 将新创建的类对象添加到全局对象池中。
         addGlobalObject(dvmClass);
         return dvmClass;
     }

@@ -10,7 +10,15 @@ import java.util.UUID;
 public class DvmMethod extends Hashable {
 
     private final DvmClass dvmClass;
+
+    /**
+     * 方法名：getPackageInfo
+     */
     final String methodName;
+
+    /**
+     * Android标准的方法签名，例如：(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;
+     */
     final String args;
     final boolean isStatic;
 
@@ -244,8 +252,16 @@ public class DvmMethod extends Hashable {
         return checkJni(vm, dvmClass).toReflectedMethod(vm, dvmClass, this);
     }
 
+    /**
+     * 参数签名数组，每个元素都是一个参数签名的描述
+     */
     private Shorty[] shortyCache;
 
+    /**
+     * 解析参数签名数组
+     *
+     * @return 返回的数组中每个元素都是一个参数签名的描述
+     */
     public final Shorty[] decodeArgsShorty() {
         if (shortyCache != null) {
             return shortyCache;
@@ -253,6 +269,7 @@ public class DvmMethod extends Hashable {
 
         char[] chars = args.toCharArray();
         List<Shorty> list = new ArrayList<>(chars.length);
+        // arrayDimensions: 记录数组维度（例如 [ 的数量）。
         int arrayDimensions = 0;
         boolean isType = false;
         Shorty shorty = null;
@@ -291,6 +308,7 @@ public class DvmMethod extends Hashable {
                     type = c;
                     break;
                 case '[':
+                    // 这里不设置类型只记录数组维度，所以下面的if (type == '0')条件会成立
                     arrayDimensions++;
                     break;
                 default:

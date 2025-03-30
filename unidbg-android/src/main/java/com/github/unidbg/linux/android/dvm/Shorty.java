@@ -4,8 +4,21 @@ import java.lang.reflect.Array;
 
 public class Shorty {
 
+    /**
+     * 数组维度，一维值为1，二维值为2，当这个值大于0的时候代表数组
+     */
     private final int arrayDimensions;
+
+    /**
+     * 类型
+     * 包含：L、B、C、I、S、Z、D、F、J。不包含：[
+     * 如果是数组，这个字段会被指定为数组元素的类型：L、B、C、I、S、Z、D、F、J，当arrayDimensions大于0的时候，就是数组
+     */
     private final char type;
+
+    /**
+     * 对象类型的类型签名，例如：Ljava/lang/String;
+     */
     private String binaryName;
 
     Shorty(int arrayDimensions, char type) {
@@ -79,9 +92,17 @@ public class Shorty {
         }
     }
 
+    /**
+     * 转换为签名，例如：
+     * [I
+     * Ljava/lang/String;
+     * I
+     * @return 返回签名
+     */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
+        // 拼接数组符号
         for (int i = 0; i < arrayDimensions; i++) {
             sb.append('[');
         }

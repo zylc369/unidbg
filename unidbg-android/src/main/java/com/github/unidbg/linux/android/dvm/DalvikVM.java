@@ -518,11 +518,17 @@ public class DalvikVM extends BaseVM implements VM {
                 }
                 DvmObject<?> dvmObject = getObject(object.toIntPeer());
                 DvmClass dvmClass = dvmObject == null ? null : dvmObject.getObjectType();
+                /*
+                jmethodID.toIntPeer()返回方法ID，方法ID通过方法签名生成。
+                生成位置：DvmClass.getMethodID，第一次通过签名获得方法ID的时候会生成这个Hash返回给虚拟机
+                 */
                 DvmMethod dvmMethod = dvmClass == null ? null : dvmClass.getMethod(jmethodID.toIntPeer());
                 if (dvmMethod == null) {
                     throw new BackendException();
                 } else {
+                    // 创建参数
                     VarArg varArg = ArmVarArg.create(emulator, DalvikVM.this, dvmMethod);
+                    // 调用方法
                     DvmObject<?> ret = dvmMethod.callObjectMethod(dvmObject, varArg);
                     if (verbose) {
                         System.out.printf("JNIEnv->CallObjectMethod(%s, %s(%s) => %s) was called from %s%n", dvmObject, dvmMethod.methodName, varArg.formatArgs(), ret, context.getLRPointer());

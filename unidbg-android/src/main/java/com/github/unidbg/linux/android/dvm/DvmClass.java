@@ -126,7 +126,15 @@ public class DvmClass extends DvmObject<Class<?>> {
         return method;
     }
 
+    /**
+     * 获得方法ID，这个ID就是签名字符串的Hash，如果这个Hash在methodMap不存在，那么创建一个
+     *
+     * @param methodName 方法名字，例如：getPackageManager
+     * @param args       传统的方法签名
+     * @return 返回方法ID，ID就是拼接后签名字符串的Hash
+     */
     int getMethodID(String methodName, String args) {
+        // 拼接完成后类似：android/content/ContextWrapper->getPackageManager()Landroid/content/pm/PackageManager;
         String signature = getClassName() + "->" + methodName + args;
         int hash = signature.hashCode();
         if (log.isDebugEnabled()) {
@@ -134,6 +142,7 @@ public class DvmClass extends DvmObject<Class<?>> {
         }
         if (vm.jni == null || vm.jni.acceptMethod(this, signature, false)) {
             if (!methodMap.containsKey(hash)) {
+                // 这个Hash在methodMap不存在，创建一个
                 methodMap.put(hash, new DvmMethod(this, methodName, args, false));
             }
             return hash;
